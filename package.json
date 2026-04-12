@@ -1,6 +1,23 @@
 {
   "name": "bookmark-ai-organizer",
   "version": "1.2.0",
+  "description": "AI-powered Chrome extension for bookmark classification, auto-organization, and confidence-aware reclassification.",
+  "keywords": [
+    "chrome-extension",
+    "bookmarks",
+    "ai",
+    "openrouter",
+    "productivity",
+    "manifest-v3"
+  ],
+  "homepage": "https://github.com/Edmon02/bookmark-ai-organizer#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Edmon02/bookmark-ai-organizer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Edmon02/bookmark-ai-organizer/issues"
+  },
   "scripts": {
     "build": "webpack --mode=production",
     "build:dev": "webpack --mode=development",
