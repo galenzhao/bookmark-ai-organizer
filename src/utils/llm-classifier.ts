@@ -9,6 +9,23 @@ interface AIProvider {
     model: string;
 }
 
+export interface ClassificationResult {
+    folderPath: string[];
+    tags: string[];
+    confidence: number;
+}
+
+export interface ClassificationOptions {
+    providerOverride?: string | null;
+    modelOverride?: string | null;
+}
+
+export interface ClassificationResultWithMeta extends ClassificationResult {
+    providerId: string;
+    providerName: string;
+    model: string;
+}
+
 export class LlmClassifier {
     private apiKey: string | undefined = undefined;
     private providerOverride: string | null = null;
@@ -42,9 +59,7 @@ export class LlmClassifier {
         },
     };
 
-    constructor() {
-        this.loadApiKey();
-    }
+    constructor() {}
 
     private async loadApiKey() {
         this.apiKey = (await SecurityManager.getApiKey())?.trim();
@@ -54,31 +69,37 @@ export class LlmClassifier {
         try {
             this.providerOverride = await getProviderPreference();
             this.selectedOpenRouterModel = await getSelectedOpenRouterModel();
-        } catch (e) {
-            console.warn('Failed to load provider preferences', e);
+        } catch {
+            this.providerOverride = null;
+            this.selectedOpenRouterModel = null;
         }
     }
 
-    private detectProvider(apiKey: string): AIProvider {
-        // Auto-detect provider based on API key format or content
+    private detectProviderId(apiKey: string): string {
         if (apiKey.startsWith('gsk_')) {
-            console.log('Selected provider: Groq');
-            return this.providers.groq;
+            return 'groq';
         } else if (apiKey.startsWith('sk-') && !apiKey.includes('kimi') && !apiKey.includes('or-v1')) {
-            return this.providers.openai;
+            return 'openai';
         } else if (apiKey.startsWith('sk-or-v1-') || apiKey.includes('openrouter')) {
-            return this.providers.openrouter;
+            return 'openrouter';
         } else if (apiKey.includes('kimi') || apiKey.length > 40) {
-            // Moonshot keys are often longer and may contain 'kimi' or be generic long tokens
-            return this.providers.moonshot;
+            return 'moonshot';
         } else if (apiKey.includes('grok') || apiKey.startsWith('xai-')) {
-            return this.providers.grok;
+            return 'grok';
         }
-        // Default to OpenRouter for most generic keys since it supports many models
-        return this.providers.openrouter;
+        return 'openrouter';
     }
 
-    async classifyUrl(url: string, title: string): Promise<{ folderPath: string[], tags: string[] }> {
+    async classifyUrl(url: string, title: string, options: ClassificationOptions = {}): Promise<ClassificationResult> {
+        const result = await this.classifyUrlWithMeta(url, title, options);
+        return {
+            folderPath: result.folderPath,
+            tags: result.tags,
+            confidence: result.confidence,
+        };
+    }
+
+    async classifyUrlWithMeta(url: string, title: string, options: ClassificationOptions = {}): Promise<ClassificationResultWithMeta> {
         // Always reload API key to ensure we have the latest saved key
         await this.loadApiKey();
 
@@ -86,24 +107,23 @@ export class LlmClassifier {
             throw new Error('API key not configured. Please save your API key first.');
         }
 
-        console.log('Using API key (first 10 chars):', this.apiKey.substring(0, 10) + '...');
         await this.loadPreferences();
 
-        const baseProvider = (this.providerOverride && this.providers[this.providerOverride])
-            ? this.providers[this.providerOverride]
-            : this.detectProvider(this.apiKey);
+        const effectiveProviderId = this.resolveProviderId(options.providerOverride);
+        const baseProvider = this.providers[effectiveProviderId];
         const provider = { ...baseProvider }; // copy to avoid mutating shared config
 
-        if (provider.name === 'OpenRouter' && this.selectedOpenRouterModel) {
-            provider.model = this.selectedOpenRouterModel;
+        if (effectiveProviderId === 'openrouter') {
+            const selectedModel = options.modelOverride ?? this.selectedOpenRouterModel;
+            if (selectedModel) {
+                provider.model = selectedModel;
+            }
         }
-        console.log('Using provider:', provider.name, 'model:', provider.model);
 
         // Create OpenAI client with provider-specific configuration
         const client = new OpenAI({
             apiKey: this.apiKey,
             baseURL: provider.baseURL,
-            dangerouslyAllowBrowser: true // Allow usage in browser extension
         });
 
         const prompt = `You are an AI assistant tasked with classifying webpages for bookmark organization. Analyze the provided URL and title to determine a logical folder structure and relevant tags. Use emojis in folder names to make them visually distinct and intuitive. Follow these guidelines:
@@ -118,12 +138,16 @@ export class LlmClassifier {
    - Generate 2-5 concise, lowercase tags that describe the webpage’s content, purpose, or category.
    - Tags should be specific and useful for searching (e.g., "coding" instead of "tech").
 
-3. **Context**:
+3. **Confidence**:
+   - Include a confidence score between 0 and 1 for your classification.
+   - Use higher confidence only when category intent is clear from URL/title.
+
+4. **Context**:
    - Infer the webpage’s purpose from the URL and title (e.g., blog, e-commerce, news, social media, education).
    - Consider the domain (e.g., github.com → coding, amazon.com → shopping).
 
-4. **Output**:
-   - Respond with valid JSON only, containing "folderPath" (array of strings) and "tags" (array of strings).
+5. **Output**:
+   - Respond with valid JSON only, containing "folderPath" (array of strings), "tags" (array of strings), and "confidence" (number from 0 to 1).
    - Do not include markdown, code fences, or extra text.
 
 **URL**: ${url}
@@ -131,20 +155,21 @@ export class LlmClassifier {
 
 **Examples**:
 - URL: https://www.nytimes.com/politics, Title: "Election Updates"
-  → {"folderPath": ["📰 News", "🌍 Global", "🗳️ Politics"], "tags": ["politics", "election", "news"]}
+  → {"folderPath": ["📰 News", "🌍 Global", "🗳️ Politics"], "tags": ["politics", "election", "news"], "confidence": 0.9}
 - URL: https://github.com/python, Title: "Python Repository"
-  → {"folderPath": ["💻 Technology", "🖥️ Software", "🛠️ Coding"], "tags": ["coding", "python", "github"]}
+  → {"folderPath": ["💻 Technology", "🖥️ Software", "🛠️ Coding"], "tags": ["coding", "python", "github"], "confidence": 0.88}
 - URL: https://www.amazon.com/electronics, Title: "Electronics Store"
-  → {"folderPath": ["🛒 Shopping", "📱 Electronics"], "tags": ["shopping", "electronics", "amazon"]}
+  → {"folderPath": ["🛒 Shopping", "📱 Electronics"], "tags": ["shopping", "electronics", "amazon"], "confidence": 0.95}
 - URL: https://www.khanacademy.org/math, Title: "Math Lessons"
-  → {"folderPath": ["📚 Education", "➗ Math"], "tags": ["education", "math", "learning"]}
+  → {"folderPath": ["📚 Education", "➗ Math"], "tags": ["education", "math", "learning"], "confidence": 0.9}
 - URL: https://www.reddit.com/r/science, Title: "Science Discussions"
-  → {"folderPath": ["🌐 Social Media", "🔬 Science"], "tags": ["social", "science", "reddit"]} 
+  → {"folderPath": ["🌐 Social Media", "🔬 Science"], "tags": ["social", "science", "reddit"], "confidence": 0.78} 
 
 **Response Format**:
 {
   "folderPath": ["Emoji Category", "Emoji Subcategory", "Emoji Specific"],
-  "tags": ["tag1", "tag2", "tag3"]
+  "tags": ["tag1", "tag2", "tag3"],
+  "confidence": 0.85
 }`;
 
         try {
@@ -161,18 +186,15 @@ export class LlmClassifier {
             let retried = false;
             let result: string | undefined;
             try {
-                console.log(`Using ${provider.name} for classification (model=${provider.model})`);
                 result = await attemptClassification();
             } catch (err) {
                 if (provider.name === 'OpenRouter' && err instanceof OpenAI.APIError && err.status === 404 && !retried) {
-                    console.warn('OpenRouter model returned 404; attempting fallback model. Original model:', provider.model);
                     retried = true;
                     await clearSelectedOpenRouterModel();
                     const apiKey = this.apiKey!;
                     const fallback = await chooseDefaultOpenRouterModel(apiKey);
                     if (fallback) {
                         provider.model = fallback;
-                        console.log('Retrying with fallback OpenRouter model:', fallback);
                         await setSelectedOpenRouterModel(fallback);
                         result = await attemptClassification();
                     } else {
@@ -191,13 +213,40 @@ export class LlmClassifier {
             if (!parsed.folderPath || !Array.isArray(parsed.folderPath)) {
                 throw new Error('Invalid response format: missing folderPath');
             }
-            console.log('Classification successful:', parsed);
-            return {
-                folderPath: parsed.folderPath.slice(0, 3),
-                tags: parsed.tags || []
+
+            const rawFolderPath: unknown[] = parsed.folderPath;
+            const folderPath = rawFolderPath
+                .filter((segment: unknown): segment is string => typeof segment === 'string')
+                .map((segment: string) => segment.trim())
+                .filter(Boolean)
+                .slice(0, 3);
+            if (!folderPath.length) {
+                throw new Error('Invalid response format: empty folderPath');
+            }
+
+            const rawTags: unknown[] = Array.isArray(parsed.tags) ? parsed.tags : [];
+            const tags = rawTags
+                    .filter((tag: unknown): tag is string => typeof tag === 'string')
+                    .map((tag: string) => tag.trim().toLowerCase())
+                    .filter(Boolean)
+                    .slice(0, 5);
+
+            const rawConfidence = Number(parsed.confidence);
+            const confidence = Number.isFinite(rawConfidence)
+                ? Math.max(0, Math.min(1, rawConfidence))
+                : 0.5;
+
+            const classification: ClassificationResultWithMeta = {
+                folderPath,
+                tags,
+                confidence,
+                providerId: effectiveProviderId,
+                providerName: provider.name,
+                model: provider.model,
             };
+
+            return classification;
         } catch (error: unknown) {
-            console.error('Classification error:', error);
             if (error instanceof OpenAI.APIError) {
                 if (error.status === 401) {
                     throw new Error('Invalid API key. Please check your credentials.');
@@ -212,5 +261,20 @@ export class LlmClassifier {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             throw new Error(`Classification failed: ${errorMessage}`);
         }
+    }
+
+    private resolveProviderId(overrideProvider?: string | null): string {
+        if (overrideProvider && this.providers[overrideProvider]) {
+            return overrideProvider;
+        }
+
+        if (this.providerOverride && this.providers[this.providerOverride]) {
+            return this.providerOverride;
+        }
+
+        if (!this.apiKey) {
+            return 'openrouter';
+        }
+        return this.detectProviderId(this.apiKey);
     }
 }

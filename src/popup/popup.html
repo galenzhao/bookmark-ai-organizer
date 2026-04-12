@@ -1,72 +1,467 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <meta charset="utf-8">
-    <title>AI Bookmark Organizer</title>
-    <link rel="stylesheet" href="popup.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Bookmark Organizer</title>
+  <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-    <div class="container">
-        <header>
-            <h1>🤖 AI Bookmark Organizer</h1>
-            <div class="status" id="status">Ready</div>
-        </header>
-        <main>
-            <div class="bookmark-section">
-                <h3>Current Page</h3>
-                <div id="page-info">
-                    <span id="page-title">Loading...</span>
-                    <span id="page-url">Loading...</span>
-                </div>
-                <button id="classify-bookmark" class="btn btn-accent">🏷️ Classify & Save</button>
+
+  <!-- Toast notifications (injected by JS) -->
+  <div id="toast-container" role="region" aria-live="polite" aria-label="Notifications"></div>
+
+  <div class="app" id="app">
+
+    <!-- ═══════════════════════════════════════
+         VIEW: ONBOARDING
+         Shown on first launch (no API key set)
+    ════════════════════════════════════════ -->
+    <div class="view" id="view-onboarding">
+
+      <div class="ob-hero">
+        <div class="ob-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+              fill="var(--c-primary)" stroke="var(--c-primary)" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <h1 class="ob-title">AI Bookmark Organizer</h1>
+        <p class="ob-subtitle">Save any page. AI sorts it instantly.</p>
+      </div>
+
+      <!-- Step indicator pills -->
+      <div class="ob-step-pills" role="tablist" aria-label="Setup steps">
+        <div class="ob-step-pill active" data-step="1" role="tab" aria-selected="true"></div>
+        <div class="ob-step-pill" data-step="2" role="tab" aria-selected="false"></div>
+      </div>
+
+      <!-- ── Step 1: Value prop + provider links ── -->
+      <div class="ob-step-content" id="ob-step-1">
+        <div class="ob-features">
+          <div class="ob-feature">
+            <span class="ob-feature-icon" aria-hidden="true">🏷️</span>
+            <div>
+              <strong>Smart categorization</strong>
+              <p>AI picks the right folder and tags — automatically</p>
             </div>
-            <div class="settings">
-                <details>
-                    <summary>⚙️ Settings</summary>
-                    <div id="settings-panel" class="settings-content">
-                        <label>
-                            API Key:
-                            <input type="text" id="api-key" placeholder="Enter your LLM API key">
-                        </label>
-                        <label>
-                            Provider:
-                            <select id="provider-select">
-                                <option value="auto">Auto Detect</option>
-                                <option value="openrouter">OpenRouter</option>
-                                <option value="openai">OpenAI</option>
-                                <option value="groq">Groq</option>
-                                <option value="moonshot">Moonshot (Kimi)</option>
-                                <option value="grok">Grok</option>
-                            </select>
-                        </label>
-                        <div id="openrouter-model-section" style="display:none;">
-                            <label>
-                                OpenRouter Model:
-                                <div style="display:flex; gap:4px; align-items:center;">
-                                    <select id="openrouter-models" style="flex:1;">
-                                        <option value="">Loading...</option>
-                                    </select>
-                                    <button id="refresh-models" class="btn" title="Refresh models">↻</button>
-                                </div>
-                            </label>
-                            <small id="model-status" style="display:block; opacity:0.8; margin-top:2px;">Select a model
-                            </small>
-                        </div>
-                        <button id="save-api-key" class="btn btn-primary">Save API Key</button>
-                    </div>
-                </details>
+          </div>
+          <div class="ob-feature">
+            <span class="ob-feature-icon" aria-hidden="true">🔒</span>
+            <div>
+              <strong>Private by design</strong>
+              <p>Your key lives only in your browser, never on our servers</p>
             </div>
-        </main>
-        <footer>
-            <div class="progress" id="progress" style="display: none;">
-                <div class="progress-bar"></div>
-                <span class="progress-text">Processing...</span>
+          </div>
+          <div class="ob-feature">
+            <span class="ob-feature-icon" aria-hidden="true">⚡</span>
+            <div>
+              <strong>Any AI model</strong>
+              <p>Works with OpenRouter, OpenAI, Groq, and more</p>
             </div>
-        </footer>
+          </div>
+        </div>
+
+        <div class="ob-get-key">
+          <p class="ob-get-key-label">Need a free API key?</p>
+          <div class="ob-provider-links">
+            <button class="ob-provider-btn" data-url="https://openrouter.ai/keys">
+              OpenRouter <span class="ob-badge">free tier</span>
+            </button>
+            <button class="ob-provider-btn" data-url="https://console.groq.com/keys">
+              Groq <span class="ob-badge">free</span>
+            </button>
+            <button class="ob-provider-btn" data-url="https://platform.openai.com/api-keys">
+              OpenAI
+            </button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="ob-next-1">
+          I have an API key →
+        </button>
+      </div>
+
+      <!-- ── Step 2: API key entry ── -->
+      <div class="ob-step-content hidden" id="ob-step-2">
+        <div class="ob-key-header">
+          <div class="ob-key-icon" aria-hidden="true">🔑</div>
+          <h2>Connect your AI</h2>
+          <p>Paste your API key below. It stays in your browser — we never see it.</p>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="ob-api-key">API Key</label>
+          <div class="input-row">
+            <input
+              type="password"
+              id="ob-api-key"
+              class="input"
+              placeholder="sk-... or sk-or-v1-..."
+              autocomplete="off"
+              spellcheck="false"
+              aria-describedby="ob-key-hint">
+            <button class="icon-btn" id="ob-toggle-key" type="button" aria-label="Show or hide API key">
+              <svg class="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+          <span id="ob-key-hint" class="input-hint-text">Detected automatically from key format</span>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="ob-provider">
+            Provider
+            <span class="input-hint">optional</span>
+          </label>
+          <select id="ob-provider" class="select" aria-label="Select AI provider">
+            <option value="auto">Auto Detect</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="openai">OpenAI</option>
+            <option value="groq">Groq</option>
+            <option value="moonshot">Moonshot (Kimi)</option>
+            <option value="grok">Grok</option>
+          </select>
+        </div>
+
+        <div class="ob-step-2-actions">
+          <button class="btn btn-ghost" id="ob-back-1" type="button">← Back</button>
+          <button class="btn btn-primary" id="ob-save-key" type="button" style="flex:1">
+            Connect &amp; Start
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /view-onboarding -->
+
+
+    <!-- ═══════════════════════════════════════
+         VIEW: MAIN
+         Shown when API key is configured
+    ════════════════════════════════════════ -->
+    <div class="view hidden" id="view-main">
+
+      <header class="header">
+        <div class="header-brand">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+              fill="var(--c-primary)" stroke="var(--c-primary)" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Bookmark AI</span>
+        </div>
+        <div class="header-right">
+          <div class="status-pill" id="status-pill" role="status" aria-live="polite">
+            <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+            <span id="status-text">Ready</span>
+          </div>
+          <button class="icon-btn" id="btn-settings" type="button" aria-label="Open settings">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="main-body">
+
+        <!-- Current page card -->
+        <div class="page-card">
+          <div class="page-meta">
+            <div class="page-favicon" id="page-favicon" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.75">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            </div>
+            <div class="page-text">
+              <div class="page-title" id="page-title">Loading page...</div>
+              <div class="page-url" id="page-url"></div>
+            </div>
+          </div>
+
+          <!-- Classification result (revealed after success) -->
+          <div class="result-area hidden" id="result-area" aria-live="polite">
+            <div class="result-folder" id="result-folder"></div>
+            <div class="result-meta" id="result-meta"></div>
+            <div class="result-tags" id="result-tags"></div>
+            <div class="result-actions">
+              <button class="btn btn-ghost btn-sm" id="result-view-details" type="button">View details</button>
+              <button class="btn btn-primary btn-sm" id="result-reclassify" type="button">Re-classify</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Classify action -->
+        <div id="classify-area">
+          <button class="btn btn-classify" id="classify-bookmark" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+              <line x1="7" y1="7" x2="7.01" y2="7" />
+            </svg>
+            Classify &amp; Save
+          </button>
+        </div>
+
+        <!-- Progress (shown during classification) -->
+        <div class="progress-area hidden" id="progress-area" role="status" aria-live="polite">
+          <div class="progress-spinner" aria-hidden="true"></div>
+          <span class="progress-label" id="progress-label">Classifying with AI...</span>
+        </div>
+
+        <!-- Active provider indicator -->
+        <div class="provider-row">
+          <span class="provider-chip" id="provider-chip">
+            <span class="provider-chip-dot" aria-hidden="true"></span>
+            <span id="provider-chip-text">AI Provider</span>
+          </span>
+        </div>
+
+      </div>
+    </div><!-- /view-main -->
+
+
+    <!-- ═══════════════════════════════════════
+         VIEW: SETTINGS
+    ════════════════════════════════════════ -->
+    <div class="view hidden" id="view-settings">
+
+      <header class="header">
+        <button class="icon-btn" id="btn-back" type="button" aria-label="Back to main view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+        </button>
+        <span class="header-title">Settings</span>
+        <div style="width:28px"></div>
+      </header>
+
+      <div class="settings-body">
+
+        <!-- ── API Key ── -->
+        <section class="settings-section" aria-label="API Key settings">
+          <div class="section-label">
+            <span aria-hidden="true">🔑</span>
+            <span>API Key</span>
+          </div>
+
+          <div class="key-status-row">
+            <div class="key-badge" id="key-badge" role="status">
+              <span class="key-badge-dot" aria-hidden="true"></span>
+              <span id="key-badge-text">Checking...</span>
+            </div>
+            <button class="btn btn-sm btn-ghost" id="btn-change-key" type="button">Change</button>
+          </div>
+
+          <div class="hidden" id="key-form">
+            <div class="key-form-input-row">
+              <input
+                type="password"
+                id="api-key"
+                class="input"
+                placeholder="Paste new API key..."
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="New API key">
+              <button class="icon-btn" id="toggle-key" type="button" aria-label="Show or hide key">
+                <svg class="eye-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
+            <div class="key-form-actions">
+              <button class="btn btn-ghost btn-sm" id="btn-cancel-key" type="button">Cancel</button>
+              <button class="btn btn-primary btn-sm" id="save-api-key" type="button">Save Key</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ── AI Provider ── -->
+        <section class="settings-section" aria-label="AI Provider settings">
+          <div class="section-label">
+            <span aria-hidden="true">⚡</span>
+            <span>AI Provider</span>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="provider-select">Provider</label>
+            <select id="provider-select" class="select">
+              <option value="auto">Auto Detect</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="openai">OpenAI</option>
+              <option value="groq">Groq</option>
+              <option value="moonshot">Moonshot (Kimi)</option>
+              <option value="grok">Grok</option>
+            </select>
+          </div>
+
+          <div class="input-group hidden" id="openrouter-model-section">
+            <div class="label-row">
+              <label class="input-label" for="openrouter-models">Model</label>
+              <button class="refresh-btn" id="refresh-models" type="button" title="Refresh model list"
+                aria-label="Refresh OpenRouter models">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+            </div>
+            <select id="openrouter-models" class="select" aria-label="Select OpenRouter model">
+              <option value="">Select a model...</option>
+            </select>
+            <small class="input-hint-text" id="model-status">Select a model above</small>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ── Appearance ── -->
+        <section class="settings-section" aria-label="Appearance settings">
+          <div class="section-label">
+            <span aria-hidden="true">🎨</span>
+            <span>Appearance</span>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-name">Dark Mode</span>
+              <span class="toggle-desc">Override system preference</span>
+            </div>
+            <button
+              class="toggle-btn"
+              id="theme-toggle"
+              type="button"
+              role="switch"
+              aria-checked="false"
+              aria-label="Toggle dark mode">
+              <span class="toggle-thumb"></span>
+            </button>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ── Automation ── -->
+        <section class="settings-section" aria-label="Automation settings">
+          <div class="section-label">
+            <span aria-hidden="true">🤖</span>
+            <span>Automation</span>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-name">Auto-classify new bookmarks</span>
+              <span class="toggle-desc">Organize bookmarks automatically when you save them</span>
+            </div>
+            <button
+              class="toggle-btn"
+              id="auto-classify-toggle"
+              type="button"
+              role="switch"
+              aria-checked="false"
+              aria-label="Toggle automatic bookmark classification">
+              <span class="toggle-thumb"></span>
+            </button>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ── Privacy & Security ── -->
+        <section class="settings-section" aria-label="Privacy and Security information">
+          <div class="section-label">
+            <span aria-hidden="true">🛡️</span>
+            <span>Privacy &amp; Security</span>
+          </div>
+          <ul class="trust-list" role="list">
+            <li><span class="trust-check" aria-hidden="true">✓</span>API key stored only in your browser — never on our servers</li>
+            <li><span class="trust-check" aria-hidden="true">✓</span>Only the page URL &amp; title are sent for classification</li>
+            <li><span class="trust-check" aria-hidden="true">✓</span>No analytics or tracking of any kind</li>
+            <li><span class="trust-check" aria-hidden="true">✓</span>100% open source — Apache 2.0 license</li>
+          </ul>
+        </section>
+
+        <div class="settings-footer">
+          <span>Version 1.2.0</span>
+          <button class="link-btn" id="btn-view-source" type="button">View source ↗</button>
+        </div>
+
+      </div><!-- /settings-body -->
+    </div><!-- /view-settings -->
+
+  </div><!-- /app -->
+
+  <div class="modal hidden" id="classification-modal" aria-hidden="true">
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <header class="modal-header">
+        <h2 id="modal-title">Classification details</h2>
+        <button class="icon-btn" id="modal-close" type="button" aria-label="Close details">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Bookmark</span>
+            <span class="detail-value" id="detail-bookmark"></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">URL</span>
+            <span class="detail-value detail-url" id="detail-url"></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Destination</span>
+            <span class="detail-value" id="detail-destination"></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Action</span>
+            <span class="detail-value" id="detail-action"></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Confidence</span>
+            <span class="detail-value" id="detail-confidence"></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Provider</span>
+            <span class="detail-value" id="detail-provider"></span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Model</span>
+            <span class="detail-value" id="detail-model"></span>
+          </div>
+        </div>
+        <div class="detail-tags" id="detail-tags"></div>
+        <div class="detail-reclassify">
+          <label class="input-label" for="detail-model-select">Re-classify with a different OpenRouter model</label>
+          <select id="detail-model-select" class="select" aria-label="Pick a model for re-classify">
+            <option value="">Loading...</option>
+          </select>
+          <button class="btn btn-primary btn-full" id="detail-reclassify-btn" type="button">
+            Re-classify Bookmark
+          </button>
+          <small class="input-hint-text" id="detail-reclassify-status"></small>
+        </div>
+      </div>
     </div>
-    <script src="popup.js"></script>
+  </div>
+
+  <script src="popup.js"></script>
 </body>
 
 </html>
