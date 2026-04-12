@@ -1,19 +1,19 @@
 {
     "manifest_version": 3,
     "name": "AI Bookmark Organizer",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "description": "AI-powered bookmark classification and organization",
     "permissions": [
         "bookmarks",
         "activeTab",
-        "storage",
-        "notifications"
+        "storage"
     ],
     "host_permissions": [
         "https://api.openai.com/*",
         "https://api.moonshot.ai/*",
         "https://api.moonshot.cn/*",
         "https://api.x.ai/*",
+        "https://api.groq.com/*",
         "https://openrouter.ai/*"
     ],
     "background": {

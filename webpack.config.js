@@ -45,6 +45,10 @@ module.exports = (env, argv) => {
       minimize: false, // Keep readable for Chrome extension review and debugging
       splitChunks: false // Don't split service worker into chunks
     },
+    performance: {
+      // Webpack web-performance thresholds do not map well to MV3 service workers.
+      hints: false
+    },
     target: ['web', 'es2020'],
     // CSP-compliant source maps - no eval allowed in Chrome extensions
     devtool: isProduction ? 'source-map' : 'cheap-module-source-map',

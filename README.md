@@ -1,128 +1,111 @@
 # AI Bookmark Organizer
 
-A Chrome extension that uses an AI (Grok or Moonshot) to classify and organize bookmarks.
+AI-powered Chrome extension that classifies and organizes bookmarks using your preferred LLM provider.
 
-## 🚀 Quick Start
+## About
 
-1. **Install Dependencies**
+AI Bookmark Organizer helps you keep browser bookmarks clean and searchable with one-click AI classification, confidence-aware reclassification, and optional auto-classification for newly saved bookmarks.
+
+### Core principles
+- Privacy-first by default (API key stored locally on your device).
+- Clear, non-technical UX with actionable feedback.
+- Safe automation with explicit controls and robust fallbacks.
+
+## Highlights (v1.2.0)
+
+- One-click `Classify & Save` with folder and tag suggestions.
+- Rich feedback after every action:
+  - bookmark affected
+  - destination folder
+  - tags
+  - confidence score
+  - provider + model used
+- Re-classify any newly saved bookmark with a different model from the details modal.
+- Optional auto-classify for newly created bookmarks.
+- OpenRouter model picker with cache, refresh, retry, and stale-fallback support.
+
+## Provider Support
+
+- Auto Detect
+- OpenRouter
+- OpenAI
+- Groq
+- Moonshot (Kimi)
+- Grok
+
+## Quick Start
+
+1. Install dependencies
    ```bash
    npm install
    ```
-
-2. **Build Extension**
+2. Build extension
    ```bash
    npm run build
    ```
-
-3. **Load Extension**
+3. Load unpacked extension
    - Open `chrome://extensions/`
    - Enable Developer Mode
-   - Load `dist` folder
+   - Click `Load unpacked`
+   - Select the `dist` directory
+4. Open the popup and complete onboarding with your API key.
 
-4. **Configure API Key**
-   - Obtain a Grok API key from https://x.ai/api
-   - Enter in the extension's Settings panel
+## How It Works
 
-## 📋 Features
-- One-click URL classification
-- Automatic bookmark folder creation
-- Secure API key storage
-- Simple and intuitive UI
+1. Popup sends typed runtime actions to the MV3 service worker.
+2. Service worker validates payloads and runs classification.
+3. Bookmark operations happen through `chrome.bookmarks`.
+4. State persists in `chrome.storage.local` and rehydrates on popup reopen.
+5. Popup renders clear status + detailed result UI.
 
-## 🔒 Privacy
-- All data processed locally except for LLM API calls.
-- API keys are stored securely using Chrome Storage.
+## Security & Reliability
 
-## 🛠️ Troubleshooting
-- Ensure a valid API key is configured.
-- Check internet connectivity for API calls.
+- API key persistence is local-only (`chrome.storage.local`).
+- Popup no longer needs to read raw key values for day-to-day actions.
+- Runtime message payload validation and URL protocol checks are enforced.
+- OpenRouter model fetches include timeout + retry/backoff (`429/5xx`) + stale-cache fallback.
+- Legacy sync key migration is handled defensively.
+- Host permissions are constrained to supported provider endpoints.
 
-Organize bookmarks automatically using an AI classifier that infers folder hierarchy and tags.
+## Settings
 
-## New: OpenRouter Provider & Model Selection
-You can now select `OpenRouter` as a provider and choose from its available models.
-
-### How It Works
-1. Open the extension popup and expand `Settings`.
-2. Enter and save your API key (OpenRouter keys usually begin with `sk-or-v1-`).
-3. Choose `OpenRouter` in the `Provider` dropdown (or leave on `Auto Detect`).
-4. When `OpenRouter` is selected, a model dropdown appears. The extension fetches models from `https://openrouter.ai/api/v1/models`.
-5. Pick a model—your choice is persisted and used for subsequent bookmark classifications.
-
-### Caching
-- Model list cached for 15 minutes in `chrome.storage.local`.
-- Manual refresh available via the ↻ button.
-- If fetching fails, a stale cached list (if present) is used.
-
-### Error Handling
-| Scenario | Behavior |
-|----------|----------|
-| Invalid key (401) | Displays error in model status; keeps stale list if available |
-| Rate limit (429) | Shows rate limit message; does not clear existing list |
-| Network failure | Falls back to cached list; marks status accordingly |
-| No models returned | Displays "No models available" |
-| No key saved yet | Prompts to save API key before loading models |
-| Deprecated / 404 model | Automatically clears selection, chooses fallback stable model, retries once |
-
-### Security Notes
-- API key stored (base64 encoded) in `chrome.storage.sync` (demo purpose—replace with stronger encryption for production).
-- Model metadata trimmed to essentials (id, name, description, context length, architecture reference).
-- No API keys or raw model lists are sent to analytics (future telemetry will hash model IDs if needed).
-
-### Selecting Other Providers
-If you choose another provider (OpenAI, Groq, Moonshot, Grok) or `Auto Detect`, the OpenRouter model UI is hidden. Auto detection still works based on key pattern if you prefer not to select a provider manually.
+- Provider preference (`Auto Detect` or manual provider).
+- OpenRouter model selection (persisted across popup reopen).
+- Auto-classify toggle for newly created bookmarks.
+- Theme toggle (`Auto`/`Dark` behavior via `ui_theme`).
 
 ## Development
-Install dependencies and build:
-```bash
-npm install
-npm run build
-```
-Load the `dist` directory as an unpacked extension in Chrome.
 
-## Fallback Strategy
-If the selected OpenRouter model returns a 404 (e.g., alpha/stealth model retired), the extension:
-1. Clears the invalid selection.
-2. Fetches the current model list.
-3. Chooses the first available from a preference list: `openai/gpt-4o-mini`, `openai/gpt-4o`, `anthropic/claude-*`, `google/gemini-*`, `meta/llama-*`.
-4. Persists the new model and retries classification once.
+### Scripts
+- `npm run type-check` - TypeScript checks.
+- `npm test` - unit tests.
+- `npm run build` - production webpack build.
+- `npm run build:store` - clean, build, and package `extension.zip`.
+- `npm run release:notes -- <version>` - generate release notes from changelog.
 
-If no model can be chosen, classification fails with a descriptive error.
+### Test coverage includes
+- Bookmark creation/move/path behavior.
+- API key validation + migration behavior.
+- OpenRouter cache/retry/fallback behavior.
 
-## Optional Enhancements (Not Yet Implemented)
-- Search/filter in large model lists.
-- Pagination or grouping (OpenRouter may expose many models).
-- Model capability badges (e.g., context size, vision support).
-- Analytics events for model fetch success/failure and selection changes.
-- Fallback model heuristics (auto choose nearest GPT-4 / Claude class if selection invalid).
+## Release Workflow
 
-## Testing
-Run unit tests:
-```bash
-npm test
-```
+1. Update `CHANGELOG.md`.
+2. Bump versions in `manifest.json` and `package.json`.
+3. Run:
+   ```bash
+   npm run type-check
+   npm test
+   npm run build
+   ```
+4. Create release artifact:
+   ```bash
+   npm run build:store
+   ```
+5. Open PR and publish release notes.
 
-## Acceptance Criteria Summary
-- Provider dropdown appears in settings.
-- Selecting `OpenRouter` triggers model fetch (with caching + manual refresh).
-- Model selection persisted and applied to classification calls.
-- Graceful handling of 401, 429, offline, and empty responses.
-- No runtime TypeScript errors in modified files.
+See `RELEASING.md` for the full release process.
 
 ## License
-Licensed under the Apache License, Version 2.0. See `LICENSE` file for details.
 
-"AI Bookmark Organizer" is distributed on an "AS IS" basis without warranties or conditions of any kind.
-
-### Release Notes Automation
-Generate release notes for a given version (uses `CHANGELOG.md`):
-```bash
-npm run release:notes -- 1.1.0
-```
-Outputs the exact section for easy copy into a GitHub Release.
-
-### SPDX Headers
-Source files now include SPDX identifiers (`SPDX-License-Identifier: Apache-2.0`) to simplify automated license scanning.
-
-### Releases
-See `RELEASING.md` for the full workflow. Tagging `vX.Y.Z` triggers an automated GitHub Release with the packaged `extension.zip`.
+Licensed under Apache 2.0. See `LICENSE` and `NOTICE`.
