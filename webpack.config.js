@@ -8,7 +8,8 @@ module.exports = (env, argv) => {
     mode: argv.mode || 'development',
     entry: {
       'background/service-worker': './src/background/service-worker.ts',
-      'popup/popup': './src/popup/popup.ts'
+      'popup/popup': './src/popup/popup.ts',
+      'options/options': './src/options/options.ts'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -64,6 +65,14 @@ module.exports = (env, argv) => {
             to: 'popup/popup.css'
           },
           {
+            from: 'src/options/options.html',
+            to: 'options/options.html'
+          },
+          {
+            from: 'src/options/options.css',
+            to: 'options/options.css'
+          },
+          {
             from: 'src/icons',
             to: 'assets'
           },
@@ -74,7 +83,14 @@ module.exports = (env, argv) => {
               // Transform manifest to point to dist files
               const manifest = JSON.parse(content.toString());
               manifest.background.service_worker = 'background/service-worker.js';
-              manifest.action.default_popup = 'popup/popup.html';
+              // Use the same UI as a tab-based options page (more reliable than a popup).
+              manifest.options_ui = {
+                page: 'options/options.html',
+                open_in_tab: true
+              };
+              if (manifest.action) {
+                delete manifest.action.default_popup;
+              }
               manifest.icons = {
                 "16": "assets/icon-16.png",
                 "32": "assets/icon-32.png", 

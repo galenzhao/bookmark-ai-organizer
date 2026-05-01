@@ -5,6 +5,7 @@ import {
     setProviderPreference,
     setSelectedOpenRouterModel,
 } from '../utils/openrouter';
+import { getCustomProviderConfig, setCustomProviderConfig } from '../utils/custom-provider';
 
 type View = 'onboarding' | 'main' | 'settings';
 type ToastType = 'success' | 'error' | 'info';
@@ -39,6 +40,30 @@ type ClassifyResultPayload = {
 
 type OpenRouterModelsResponse = {
     models: Array<{ id: string; name?: string }>;
+};
+
+type BulkOrganizeJobState = {
+    status: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed';
+    startedAt: number | null;
+    updatedAt: number | null;
+    targetRootId: string | null;
+    renameTitles: boolean;
+    cleanupEmptyFolders: boolean;
+    total: number;
+    cursor: number;
+    processed: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+    skippedAlreadyOrganized: number;
+    lastError: string | null;
+    failureCounts: Record<string, number>;
+    recentFailures: Array<{
+        bookmarkId: string;
+        title: string;
+        url: string;
+        error: string;
+    }>;
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -94,6 +119,14 @@ class PopupController {
     private detailReclassifyBtn!: HTMLButtonElement;
     private detailReclassifyStatus!: HTMLElement;
 
+    // Bulk details modal
+    private bulkDetailsModal!: HTMLElement;
+    private bulkDetailsClose!: HTMLButtonElement;
+    private bulkDetailsBackdrop!: HTMLElement;
+    private bulkDetailsCopyBtn!: HTMLButtonElement;
+    private bulkDetailsTextarea!: HTMLTextAreaElement;
+    private bulkDetailsStatus!: HTMLElement;
+
     // Settings
     private apiKeyInput!: HTMLInputElement;
     private keyBadge!: HTMLElement;
@@ -105,6 +138,21 @@ class PopupController {
     private modelStatus!: HTMLElement;
     private autoClassifyToggle!: HTMLButtonElement;
     private themeToggle!: HTMLButtonElement;
+    private customProviderSection!: HTMLElement;
+    private customBaseUrl!: HTMLInputElement;
+    private customModel!: HTMLInputElement;
+    private customProviderSaveBtn!: HTMLButtonElement;
+    private customProviderTestBtn!: HTMLButtonElement;
+    private customProviderStatus!: HTMLElement;
+    private bulkOrganizeBtn!: HTMLButtonElement;
+    private bulkOrganizeCancelBtn!: HTMLButtonElement;
+    private bulkOrganizeDetailsBtn!: HTMLButtonElement;
+    private bulkOrganizeStatus!: HTMLElement;
+    private bulkOrganizeRoot!: HTMLSelectElement;
+    private bulkOrganizeRename!: HTMLInputElement;
+    private bulkOrganizeCleanup!: HTMLInputElement;
+    private bulkOrganizeForce!: HTMLInputElement;
+    private bulkOrganizePollTimer: number | null = null;
 
     private currentView: View = 'onboarding';
     private settingsLoadToken = 0;
@@ -164,6 +212,13 @@ class PopupController {
         this.detailReclassifyBtn = this.el('detail-reclassify-btn') as HTMLButtonElement;
         this.detailReclassifyStatus = this.el('detail-reclassify-status');
 
+        this.bulkDetailsModal = this.el('bulk-details-modal');
+        this.bulkDetailsClose = this.el('bulk-details-close') as HTMLButtonElement;
+        this.bulkDetailsBackdrop = this.el('bulk-details-backdrop');
+        this.bulkDetailsCopyBtn = this.el('bulk-details-copy') as HTMLButtonElement;
+        this.bulkDetailsTextarea = this.el('bulk-details-text') as HTMLTextAreaElement;
+        this.bulkDetailsStatus = this.el('bulk-details-status');
+
         this.apiKeyInput = this.el('api-key') as HTMLInputElement;
         this.keyBadge = this.el('key-badge');
         this.keyBadgeText = this.el('key-badge-text');
@@ -174,6 +229,22 @@ class PopupController {
         this.modelStatus = this.el('model-status');
         this.autoClassifyToggle = this.el('auto-classify-toggle') as HTMLButtonElement;
         this.themeToggle = this.el('theme-toggle') as HTMLButtonElement;
+
+        this.customProviderSection = this.el('custom-provider-section');
+        this.customBaseUrl = this.el('custom-base-url') as HTMLInputElement;
+        this.customModel = this.el('custom-model') as HTMLInputElement;
+        this.customProviderTestBtn = this.el('custom-provider-test') as HTMLButtonElement;
+        this.customProviderSaveBtn = this.el('custom-provider-save') as HTMLButtonElement;
+        this.customProviderStatus = this.el('custom-provider-status');
+
+        this.bulkOrganizeBtn = this.el('bulk-organize-btn') as HTMLButtonElement;
+        this.bulkOrganizeCancelBtn = this.el('bulk-organize-cancel') as HTMLButtonElement;
+        this.bulkOrganizeDetailsBtn = this.el('bulk-organize-details') as HTMLButtonElement;
+        this.bulkOrganizeStatus = this.el('bulk-organize-status');
+        this.bulkOrganizeRoot = this.el('bulk-organize-root') as HTMLSelectElement;
+        this.bulkOrganizeRename = this.el('bulk-organize-rename') as HTMLInputElement;
+        this.bulkOrganizeCleanup = this.el('bulk-organize-cleanup') as HTMLInputElement;
+        this.bulkOrganizeForce = this.el('bulk-organize-force') as HTMLInputElement;
     }
 
     private bindEvents(): void {
@@ -201,6 +272,10 @@ class PopupController {
         this.detailModalBackdrop.addEventListener('click', () => this.closeDetailModal());
         this.detailReclassifyBtn.addEventListener('click', () => void this.reclassifyWithSelectedModel());
 
+        this.bulkDetailsClose.addEventListener('click', () => this.closeBulkDetailsModal());
+        this.bulkDetailsBackdrop.addEventListener('click', () => this.closeBulkDetailsModal());
+        this.bulkDetailsCopyBtn.addEventListener('click', () => void this.copyBulkDetails());
+
         this.el('btn-back').addEventListener('click', () => this.showView('main'));
         this.el('btn-change-key').addEventListener('click', () => this.showKeyForm());
         this.el('btn-cancel-key').addEventListener('click', () => this.hideKeyForm());
@@ -210,8 +285,13 @@ class PopupController {
         this.providerSelect.addEventListener('change', () => void this.onProviderChange());
         this.el('refresh-models').addEventListener('click', () => void this.loadOpenRouterModels(true));
         this.openRouterModels.addEventListener('change', () => void this.onModelSelected());
+        this.customProviderSaveBtn.addEventListener('click', () => void this.saveCustomProvider());
+        this.customProviderTestBtn.addEventListener('click', () => void this.testCustomProvider());
         this.autoClassifyToggle.addEventListener('click', () => void this.toggleAutoClassify());
         this.themeToggle.addEventListener('click', () => void this.toggleTheme());
+        this.bulkOrganizeBtn.addEventListener('click', () => void this.startBulkOrganizeAll());
+        this.bulkOrganizeCancelBtn.addEventListener('click', () => void this.cancelBulkOrganize());
+        this.bulkOrganizeDetailsBtn.addEventListener('click', () => void this.showBulkOrganizeDetails());
         this.el('btn-view-source').addEventListener('click', () =>
             void chrome.tabs.create({ url: 'https://github.com/edmondhillary/bookmark-ai-organizer' }));
 
@@ -349,6 +429,11 @@ class PopupController {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (!tab.url || !tab.title) {
                 throw new Error('No valid URL or title found.');
+            }
+            if (!this.isHttpUrl(tab.url)) {
+                this.showToast('This page cannot be classified (only http/https URLs are supported).', 'info');
+                this.setStatus('Ready', 'default');
+                return;
             }
 
             this.showProgress('Saving bookmark...');
@@ -580,12 +665,201 @@ class PopupController {
         } else {
             this.openRouterModelSection.classList.add('hidden');
         }
+        await this.loadCustomProviderConfig();
+        this.customProviderSection.classList.toggle('hidden', this.providerSelect.value !== 'custom');
 
         const theme = await this.getStoredTheme();
         if (loadToken !== this.settingsLoadToken) {
             return;
         }
         this.themeToggle.setAttribute('aria-checked', theme === 'dark' ? 'true' : 'false');
+        await this.refreshBulkOrganizeStatus(false);
+    }
+
+    private async startBulkOrganizeAll(): Promise<void> {
+        this.bulkOrganizeBtn.disabled = true;
+        this.bulkOrganizeCancelBtn.disabled = true;
+        this.bulkOrganizeStatus.textContent = 'Starting...';
+
+        try {
+            const rootSelection = this.bulkOrganizeRoot.value;
+            const targetRootId = rootSelection === 'preserve' ? null : rootSelection;
+            await this.sendAction<BulkOrganizeJobState>('START_BULK_ORGANIZE_ALL', {
+                targetRootId,
+                renameTitles: this.bulkOrganizeRename.checked,
+                cleanupEmptyFolders: this.bulkOrganizeCleanup.checked,
+                forceReorganize: this.bulkOrganizeForce.checked,
+            });
+            await this.refreshBulkOrganizeStatus(true);
+            this.showToast('Bulk organize started. Keep this window open while it runs.', 'info');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to start bulk organize.';
+            this.bulkOrganizeStatus.textContent = message;
+            this.showToast(message, 'error');
+        } finally {
+            this.bulkOrganizeBtn.disabled = false;
+        }
+    }
+
+    private async cancelBulkOrganize(): Promise<void> {
+        this.bulkOrganizeCancelBtn.disabled = true;
+        try {
+            await this.sendAction<BulkOrganizeJobState>('CANCEL_BULK_ORGANIZE');
+            await this.refreshBulkOrganizeStatus(false);
+            this.showToast('Bulk organize stopped.', 'info');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to stop bulk organize.';
+            this.showToast(message, 'error');
+        } finally {
+            this.bulkOrganizeCancelBtn.disabled = false;
+        }
+    }
+
+    private async refreshBulkOrganizeStatus(ensurePolling: boolean): Promise<void> {
+        const status = await this.sendAction<BulkOrganizeJobState>('GET_BULK_ORGANIZE_STATUS');
+        this.renderBulkOrganizeStatus(status);
+        if (ensurePolling && status.status === 'running') {
+            this.startBulkOrganizePolling();
+        } else if (status.status !== 'running') {
+            this.stopBulkOrganizePolling();
+        }
+    }
+
+    private renderBulkOrganizeStatus(status: BulkOrganizeJobState): void {
+        const total = status.total || 0;
+        const processed = status.processed || 0;
+        const suffix = total ? `${processed}/${total}` : '0/0';
+
+        if (status.status === 'running') {
+            this.bulkOrganizeStatus.textContent =
+                `Running: ${suffix}. ✓${status.succeeded} ✕${status.failed} ⤼${status.skipped} ↷${status.skippedAlreadyOrganized}`;
+            this.bulkOrganizeCancelBtn.disabled = false;
+            this.bulkOrganizeDetailsBtn.disabled = false;
+            return;
+        }
+        if (status.status === 'completed') {
+            this.bulkOrganizeStatus.textContent =
+                `Completed: ${suffix}. ✓${status.succeeded} ✕${status.failed} ⤼${status.skipped} ↷${status.skippedAlreadyOrganized}`;
+            this.bulkOrganizeCancelBtn.disabled = true;
+            this.bulkOrganizeDetailsBtn.disabled = status.failed === 0;
+            return;
+        }
+        if (status.status === 'cancelled') {
+            this.bulkOrganizeStatus.textContent =
+                `Stopped: ${suffix}. ✓${status.succeeded} ✕${status.failed} ⤼${status.skipped} ↷${status.skippedAlreadyOrganized}`;
+            this.bulkOrganizeCancelBtn.disabled = true;
+            this.bulkOrganizeDetailsBtn.disabled = status.failed === 0;
+            return;
+        }
+        if (status.status === 'failed') {
+            this.bulkOrganizeStatus.textContent = `Failed: ${status.lastError || 'Unknown error'}`;
+            this.bulkOrganizeCancelBtn.disabled = true;
+            this.bulkOrganizeDetailsBtn.disabled = false;
+            return;
+        }
+        this.bulkOrganizeStatus.textContent = '';
+        this.bulkOrganizeCancelBtn.disabled = true;
+        this.bulkOrganizeDetailsBtn.disabled = true;
+    }
+
+    private async showBulkOrganizeDetails(): Promise<void> {
+        try {
+            const status = await this.sendAction<BulkOrganizeJobState>('GET_BULK_ORGANIZE_STATUS');
+            const topFailures = Object.entries(status.failureCounts || {})
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8)
+                .map(([msg, count]) => `- ${count}× ${msg}`)
+                .join('\n');
+
+            const recent = (status.recentFailures || [])
+                .slice(0, 15)
+                .map((f) => {
+                    const title = f.title ? ` (${f.title})` : '';
+                    const url = f.url ? `\n  ${f.url}` : '';
+                    return `- ${f.bookmarkId}${title}\n  ${f.error.split('\n')[0]}${url}`;
+                })
+                .join('\n');
+
+            const text = [
+                `Status: ${status.status}`,
+                `Processed: ${status.processed}/${status.total}`,
+                `Succeeded: ${status.succeeded}`,
+                `Failed: ${status.failed}`,
+                `Skipped: ${status.skipped}`,
+                `Skipped (already organized): ${status.skippedAlreadyOrganized}`,
+                '',
+                'Top failure reasons:',
+                topFailures || '- (none)',
+                '',
+                'Recent failures:',
+                recent || '- (none)',
+            ].join('\n');
+
+            this.bulkDetailsTextarea.value = text;
+            this.bulkDetailsStatus.textContent = '';
+            this.bulkDetailsModal.classList.remove('hidden');
+            this.bulkDetailsTextarea.focus();
+            this.bulkDetailsTextarea.select();
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to load details.';
+            this.showToast(message, 'error');
+        }
+    }
+
+    private closeBulkDetailsModal(): void {
+        this.bulkDetailsModal.classList.add('hidden');
+        this.bulkDetailsStatus.textContent = '';
+    }
+
+    private async copyBulkDetails(): Promise<void> {
+        try {
+            await navigator.clipboard.writeText(this.bulkDetailsTextarea.value);
+            this.bulkDetailsStatus.textContent = 'Copied to clipboard.';
+        } catch {
+            // Fallback: keep selected so user can Cmd+C.
+            this.bulkDetailsTextarea.focus();
+            this.bulkDetailsTextarea.select();
+            this.bulkDetailsStatus.textContent = 'Copy failed. Press Cmd/Ctrl+C to copy.';
+        }
+    }
+
+    private startBulkOrganizePolling(): void {
+        if (this.bulkOrganizePollTimer !== null) {
+            return;
+        }
+
+        const tick = async (): Promise<void> => {
+            if (this.currentView !== 'settings') {
+                this.stopBulkOrganizePolling();
+                return;
+            }
+            try {
+                // Background service worker drives bulk progress via alarms.
+                // Popup polling is read-only: it only refreshes status for display.
+                const status = await this.sendAction<BulkOrganizeJobState>('GET_BULK_ORGANIZE_STATUS');
+                this.renderBulkOrganizeStatus(status);
+                if (status.status !== 'running') {
+                    this.stopBulkOrganizePolling();
+                    return;
+                }
+            } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : 'Bulk organize error.';
+                this.bulkOrganizeStatus.textContent = message;
+                this.stopBulkOrganizePolling();
+                return;
+            }
+            this.bulkOrganizePollTimer = window.setTimeout(() => void tick(), 350);
+        };
+
+        this.bulkOrganizePollTimer = window.setTimeout(() => void tick(), 350);
+    }
+
+    private stopBulkOrganizePolling(): void {
+        if (this.bulkOrganizePollTimer === null) {
+            return;
+        }
+        window.clearTimeout(this.bulkOrganizePollTimer);
+        this.bulkOrganizePollTimer = null;
     }
 
     private updateKeyBadge(isConnected: boolean, keyHint: string | null): void {
@@ -657,8 +931,106 @@ class PopupController {
         } else {
             this.openRouterModelSection.classList.add('hidden');
         }
+        this.customProviderSection.classList.toggle('hidden', provider !== 'custom');
 
         await this.updateProviderChip();
+    }
+
+    private async loadCustomProviderConfig(): Promise<void> {
+        const config = await getCustomProviderConfig();
+        this.customBaseUrl.value = config?.baseURL ?? '';
+        this.customModel.value = config?.model ?? '';
+        this.customProviderStatus.textContent = '';
+
+        if (config?.baseURL) {
+            try {
+                const parsed = new URL(config.baseURL);
+                const originPattern = `${parsed.origin}/*`;
+                if (chrome.permissions?.contains) {
+                    const granted = await chrome.permissions.contains({ origins: [originPattern] });
+                    if (!granted) {
+                        this.customProviderStatus.textContent =
+                            'Saved locally. Click Save to request host permission for this endpoint.';
+                    }
+                }
+            } catch {
+                // ignore
+            }
+        }
+    }
+
+    private async saveCustomProvider(): Promise<void> {
+        const baseURL = this.customBaseUrl.value.trim();
+        const model = this.customModel.value.trim();
+        if (!baseURL || !model) {
+            this.customProviderStatus.textContent = 'Base URL and Model are required.';
+            return;
+        }
+
+        let originPattern: string;
+        try {
+            const parsed = new URL(baseURL);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+                throw new Error('Invalid protocol');
+            }
+            originPattern = `${parsed.origin}/*`;
+        } catch {
+            this.customProviderStatus.textContent = 'Base URL must be a valid http(s) URL.';
+            return;
+        }
+
+        this.customProviderSaveBtn.disabled = true;
+        this.customProviderStatus.textContent = 'Saving...';
+
+        try {
+            // Important: save first. The Chrome permission prompt can close the popup,
+            // so saving after requesting permission can be lost.
+            await setCustomProviderConfig({ baseURL, model });
+
+            this.customProviderStatus.textContent = 'Requesting permission...';
+            try {
+                const granted = await chrome.permissions.request({ origins: [originPattern] });
+                if (!granted) {
+                    this.customProviderStatus.textContent =
+                        'Saved locally, but permission was denied. Click Save again and allow access.';
+                    return;
+                }
+            } catch {
+                // Some Chromium variants report the "permissions" manifest entry as unknown.
+                // In that case, we still save the config and let requests fail with a clear connection error.
+                this.customProviderStatus.textContent =
+                    'Saved locally. Host permission request is not available in this browser.';
+                this.showToast('Custom provider saved (permission API unavailable).', 'info');
+                return;
+            }
+            this.customProviderStatus.textContent = 'Saved.';
+            this.showToast('Custom provider saved.', 'success');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to save custom provider.';
+            this.customProviderStatus.textContent = message;
+            this.showToast(message, 'error');
+        } finally {
+            this.customProviderSaveBtn.disabled = false;
+        }
+    }
+
+    private async testCustomProvider(): Promise<void> {
+        this.customProviderTestBtn.disabled = true;
+        this.customProviderStatus.textContent = 'Testing...';
+        try {
+            const result = await this.sendAction<Omit<ClassifyResultPayload, 'bookmark' | 'folderId' | 'action'>>('CLASSIFY_ONLY', {
+                url: 'https://example.com/',
+                title: 'Example Domain',
+            });
+            this.customProviderStatus.textContent = `OK. Using model: ${result.model}`;
+            this.showToast('Custom provider test succeeded.', 'success');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Custom provider test failed.';
+            this.customProviderStatus.textContent = message;
+            this.showToast(message, 'error');
+        } finally {
+            this.customProviderTestBtn.disabled = false;
+        }
     }
 
     private async onModelSelected(): Promise<void> {
@@ -942,6 +1314,15 @@ class PopupController {
     }
 
     private isSafeImageUrl(url: string): boolean {
+        try {
+            const parsed = new URL(url);
+            return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch {
+            return false;
+        }
+    }
+
+    private isHttpUrl(url: string): boolean {
         try {
             const parsed = new URL(url);
             return parsed.protocol === 'https:' || parsed.protocol === 'http:';

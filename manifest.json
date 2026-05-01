@@ -6,7 +6,11 @@
     "permissions": [
         "bookmarks",
         "activeTab",
-        "storage"
+        "storage",
+        "alarms"
+    ],
+    "optional_host_permissions": [
+        "<all_urls>"
     ],
     "host_permissions": [
         "https://api.openai.com/*",
@@ -19,8 +23,11 @@
     "background": {
         "service_worker": "src/background/service-worker.ts"
     },
+    "options_ui": {
+        "page": "src/options/options.html",
+        "open_in_tab": true
+    },
     "action": {
-        "default_popup": "src/popup/popup.html",
         "default_title": "AI Bookmark Organizer"
     },
     "icons": {

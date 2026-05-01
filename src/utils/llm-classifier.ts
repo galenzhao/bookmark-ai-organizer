@@ -2,6 +2,7 @@
 import OpenAI from 'openai';
 import { SecurityManager } from './security';
 import { getProviderPreference, getSelectedOpenRouterModel, chooseDefaultOpenRouterModel, clearSelectedOpenRouterModel, setSelectedOpenRouterModel } from './openrouter';
+import { getCustomProviderConfig } from './custom-provider';
 
 interface AIProvider {
     name: string;
@@ -13,6 +14,7 @@ export interface ClassificationResult {
     folderPath: string[];
     tags: string[];
     confidence: number;
+    suggestedTitle?: string;
 }
 
 export interface ClassificationOptions {
@@ -56,6 +58,11 @@ export class LlmClassifier {
             name: 'Groq',
             baseURL: 'https://api.groq.com/openai/v1',
             model: 'llama-3.3-70b-versatile'
+        },
+        custom: {
+            name: 'Custom (OpenAI-compatible)',
+            baseURL: 'http://localhost:11434/v1',
+            model: 'gpt-4o-mini'
         },
     };
 
@@ -119,6 +126,20 @@ export class LlmClassifier {
                 provider.model = selectedModel;
             }
         }
+        if (effectiveProviderId === 'custom') {
+            const config = await getCustomProviderConfig();
+            if (!config?.baseURL || !config?.model) {
+                throw new Error('Custom provider is not configured. Set Base URL and Model in Settings.');
+            }
+            if (!this.isValidBaseUrl(config.baseURL)) {
+                throw new Error('Custom provider Base URL must be a valid http(s) URL.');
+            }
+            provider.baseURL = config.baseURL.replace(/\/$/, '');
+            provider.model = config.model.trim();
+            if (!provider.model) {
+                throw new Error('Custom provider model is required.');
+            }
+        }
 
         // Create OpenAI client with provider-specific configuration
         const client = new OpenAI({
@@ -126,11 +147,11 @@ export class LlmClassifier {
             baseURL: provider.baseURL,
         });
 
-        const prompt = `You are an AI assistant tasked with classifying webpages for bookmark organization. Analyze the provided URL and title to determine a logical folder structure and relevant tags. Use emojis in folder names to make them visually distinct and intuitive. Follow these guidelines:
+        const prompt = `You are an AI assistant tasked with classifying webpages for bookmark organization. Analyze the provided URL and the existing bookmark title to determine a logical folder structure, relevant tags, and a cleaned bookmark title. Do NOT use emojis or special symbols in folder names. Folder names must be plain text only. Follow these guidelines:
 
 1. **Folder Structure**:
-   - Create a folder path with 1-3 levels (e.g., ["📰 News", "🌍 Global"] or ["💻 Technology", "🖥️ Software", "🛠️ Tools"]).
-   - Use simple, widely supported Unicode emojis (e.g., 📰, 💻, 🛒, 📚) at the start of each folder name.
+   - Create a folder path with 1-3 levels (e.g., ["News", "Global"] or ["Technology", "Software", "Tools"]).
+   - Folder names MUST NOT contain emojis, leading icons, or decorative prefixes/suffixes.
    - Ensure folder names are concise, descriptive, and reflect the webpage's content or purpose.
    - Avoid nested folders deeper than 3 levels.
 
@@ -147,7 +168,13 @@ export class LlmClassifier {
    - Consider the domain (e.g., github.com → coding, amazon.com → shopping).
 
 5. **Output**:
-   - Respond with valid JSON only, containing "folderPath" (array of strings), "tags" (array of strings), and "confidence" (number from 0 to 1).
+   - Respond with valid JSON only, containing "folderPath" (array of strings), "tags" (array of strings), "confidence" (number from 0 to 1), and "suggestedTitle" (string).
+   - The "suggestedTitle" MUST be based on BOTH the provided URL and the existing title. Do not invent unrelated titles.
+   - "suggestedTitle" rules:
+     - Keep the original intent/topic. Remove boilerplate like "Home", "Index", or repeated site names.
+     - If the title is too generic (e.g., "Home", "Dashboard"), infer a better one from the URL path and domain.
+     - Prefer concise, descriptive titles (typically 4–10 words). No emojis in the title.
+     - Avoid adding marketing fluff; keep it factual.
    - Do not include markdown, code fences, or extra text.
 
 **URL**: ${url}
@@ -155,21 +182,22 @@ export class LlmClassifier {
 
 **Examples**:
 - URL: https://www.nytimes.com/politics, Title: "Election Updates"
-  → {"folderPath": ["📰 News", "🌍 Global", "🗳️ Politics"], "tags": ["politics", "election", "news"], "confidence": 0.9}
+  → {"folderPath": ["News", "Global", "Politics"], "tags": ["politics", "election", "news"], "confidence": 0.9, "suggestedTitle": "Election updates — politics"}
 - URL: https://github.com/python, Title: "Python Repository"
-  → {"folderPath": ["💻 Technology", "🖥️ Software", "🛠️ Coding"], "tags": ["coding", "python", "github"], "confidence": 0.88}
+  → {"folderPath": ["Technology", "Software", "Coding"], "tags": ["coding", "python", "github"], "confidence": 0.88, "suggestedTitle": "Python on GitHub"}
 - URL: https://www.amazon.com/electronics, Title: "Electronics Store"
-  → {"folderPath": ["🛒 Shopping", "📱 Electronics"], "tags": ["shopping", "electronics", "amazon"], "confidence": 0.95}
+  → {"folderPath": ["Shopping", "Electronics"], "tags": ["shopping", "electronics", "amazon"], "confidence": 0.95, "suggestedTitle": "Amazon Electronics"}
 - URL: https://www.khanacademy.org/math, Title: "Math Lessons"
-  → {"folderPath": ["📚 Education", "➗ Math"], "tags": ["education", "math", "learning"], "confidence": 0.9}
+  → {"folderPath": ["Education", "Math"], "tags": ["education", "math", "learning"], "confidence": 0.9, "suggestedTitle": "Khan Academy — Math lessons"}
 - URL: https://www.reddit.com/r/science, Title: "Science Discussions"
-  → {"folderPath": ["🌐 Social Media", "🔬 Science"], "tags": ["social", "science", "reddit"], "confidence": 0.78} 
+  → {"folderPath": ["Social Media", "Science"], "tags": ["social", "science", "reddit"], "confidence": 0.78, "suggestedTitle": "Reddit r/science discussions"} 
 
 **Response Format**:
 {
-  "folderPath": ["Emoji Category", "Emoji Subcategory", "Emoji Specific"],
+  "folderPath": ["Category", "Subcategory", "Specific"],
   "tags": ["tag1", "tag2", "tag3"],
-  "confidence": 0.85
+  "confidence": 0.85,
+  "suggestedTitle": "A better title"
 }`;
 
         try {
@@ -236,10 +264,15 @@ export class LlmClassifier {
                 ? Math.max(0, Math.min(1, rawConfidence))
                 : 0.5;
 
+            const suggestedTitle = typeof parsed.suggestedTitle === 'string'
+                ? parsed.suggestedTitle.trim().slice(0, 180)
+                : undefined;
+
             const classification: ClassificationResultWithMeta = {
                 folderPath,
                 tags,
                 confidence,
+                suggestedTitle,
                 providerId: effectiveProviderId,
                 providerName: provider.name,
                 model: provider.model,
@@ -254,6 +287,10 @@ export class LlmClassifier {
                     throw new Error('Rate limit exceeded. Please try again later.');
                 } else if (error.status === 403) {
                     throw new Error('API access forbidden. Check your API key permissions.');
+                } else if (error.status === undefined) {
+                    // OpenAI SDK uses undefined status for network errors like "Failed to fetch".
+                    // Make the root cause actionable by including the provider and base URL.
+                    throw new Error(`Connection error. Failed to reach ${provider.name} at ${provider.baseURL}.`);
                 } else {
                     throw new Error(`API Error (${error.status}): ${error.message}`);
                 }
@@ -276,5 +313,14 @@ export class LlmClassifier {
             return 'openrouter';
         }
         return this.detectProviderId(this.apiKey);
+    }
+
+    private isValidBaseUrl(value: string): boolean {
+        try {
+            const parsed = new URL(value);
+            return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch {
+            return false;
+        }
     }
 }

@@ -985,6 +985,15 @@ body {
   overflow-y: auto;
 }
 
+.bulk-details-textarea {
+  min-height: 320px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre;
+}
+
 .detail-grid {
   display: grid;
   gap: 8px;
@@ -1032,6 +1041,61 @@ body {
   gap: 6px;
   padding-top: 8px;
   border-top: 1px solid var(--c-border);
+}
+
+.bulk-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--c-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bulk-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.bulk-destination {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bulk-destination .input {
+  font-size: 12px;
+  padding: 7px 9px;
+}
+
+.bulk-option {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
+.bulk-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bulk-actions .btn {
+  white-space: nowrap;
 }
 
 

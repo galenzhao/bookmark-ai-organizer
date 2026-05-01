@@ -310,6 +310,7 @@
               <option value="groq">Groq</option>
               <option value="moonshot">Moonshot (Kimi)</option>
               <option value="grok">Grok</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
             </select>
           </div>
 
@@ -329,6 +330,21 @@
               <option value="">Select a model...</option>
             </select>
             <small class="input-hint-text" id="model-status">Select a model above</small>
+          </div>
+
+          <div class="input-group hidden" id="custom-provider-section" aria-label="Custom provider settings">
+            <label class="input-label" for="custom-base-url">Base URL</label>
+            <input id="custom-base-url" class="input" type="text" placeholder="https://your-host.example.com/v1" />
+            <small class="input-hint-text">Must be an OpenAI-compatible endpoint (e.g. ends with /v1).</small>
+
+            <label class="input-label" for="custom-model">Model</label>
+            <input id="custom-model" class="input" type="text" placeholder="gpt-4o-mini" />
+
+            <div class="key-form-actions" style="margin-top: 8px;">
+              <button class="btn btn-ghost btn-sm" id="custom-provider-test" type="button">Test</button>
+              <button class="btn btn-primary btn-sm" id="custom-provider-save" type="button">Save</button>
+            </div>
+            <small class="input-hint-text" id="custom-provider-status"></small>
           </div>
         </section>
 
@@ -379,6 +395,42 @@
               aria-label="Toggle automatic bookmark classification">
               <span class="toggle-thumb"></span>
             </button>
+          </div>
+
+          <div class="bulk-row">
+            <div class="bulk-info">
+              <span class="toggle-name">Organize all existing bookmarks</span>
+              <span class="toggle-desc">Batch re-classify and move your current bookmark library</span>
+              <div class="bulk-destination">
+                <label class="input-label" for="bulk-organize-root">
+                  <span class="input-hint">Destination root</span>
+                </label>
+                <select class="input" id="bulk-organize-root">
+                  <option value="preserve">Keep original root (recommended)</option>
+                  <option value="1">Move into Bookmarks bar</option>
+                  <option value="2">Move into Other bookmarks</option>
+                  <option value="3">Move into Mobile bookmarks</option>
+                </select>
+              </div>
+              <label class="bulk-option">
+                <input type="checkbox" id="bulk-organize-rename" />
+                <span>Also rename bookmark titles with AI</span>
+              </label>
+              <label class="bulk-option">
+                <input type="checkbox" id="bulk-organize-cleanup" checked />
+                <span>Remove empty folders after organizing</span>
+              </label>
+              <label class="bulk-option">
+                <input type="checkbox" id="bulk-organize-force" />
+                <span>Force re-organize all (ignore previous “already organized”)</span>
+              </label>
+              <small class="input-hint-text" id="bulk-organize-status"></small>
+            </div>
+            <div class="bulk-actions">
+              <button class="btn btn-sm btn-primary" id="bulk-organize-btn" type="button">Start</button>
+              <button class="btn btn-sm btn-ghost" id="bulk-organize-cancel" type="button">Stop</button>
+              <button class="btn btn-sm btn-ghost" id="bulk-organize-details" type="button">Details</button>
+            </div>
           </div>
         </section>
 
@@ -456,6 +508,26 @@
             Re-classify Bookmark
           </button>
           <small class="input-hint-text" id="detail-reclassify-status"></small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="bulk-details-modal" aria-hidden="true">
+    <div class="modal-backdrop" id="bulk-details-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="bulk-details-title">
+      <header class="modal-header">
+        <h2 id="bulk-details-title">Bulk organize details</h2>
+        <button class="icon-btn" id="bulk-details-close" type="button" aria-label="Close details">×</button>
+      </header>
+      <div class="modal-body">
+        <div class="input-group">
+          <div class="label-row">
+            <label class="input-label" for="bulk-details-text">Details</label>
+            <button class="btn btn-sm btn-ghost" id="bulk-details-copy" type="button">Copy</button>
+          </div>
+          <textarea id="bulk-details-text" class="input bulk-details-textarea" spellcheck="false" readonly></textarea>
+          <small class="input-hint-text" id="bulk-details-status"></small>
         </div>
       </div>
     </div>

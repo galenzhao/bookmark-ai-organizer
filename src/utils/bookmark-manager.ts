@@ -13,12 +13,14 @@ export interface BookmarkMoveResult {
 }
 
 export class BookmarkManager {
-    async createBookmark(url: string, title: string, folderPath: string[]): Promise<BookmarkCreationResult> {
-        const normalizedPath = folderPath
-            .map(segment => segment.trim())
-            .filter(Boolean)
-            .slice(0, 3);
-        const folderId = await this.ensureFolderPath(normalizedPath);
+    async createBookmark(
+        url: string,
+        title: string,
+        folderPath: string[],
+        rootFolderId: string = '1',
+    ): Promise<BookmarkCreationResult> {
+        const normalizedPath = this.normalizePath(folderPath);
+        const folderId = await this.ensureFolderPath(rootFolderId, normalizedPath);
         const bookmark = await chrome.bookmarks.create({
             parentId: folderId,
             title,
@@ -32,7 +34,11 @@ export class BookmarkManager {
         };
     }
 
-    async moveBookmarkToFolderPath(bookmarkId: string, folderPath: string[]): Promise<BookmarkMoveResult> {
+    async moveBookmarkToFolderPath(
+        bookmarkId: string,
+        folderPath: string[],
+        rootFolderId: string = '1',
+    ): Promise<BookmarkMoveResult> {
         const normalizedPath = this.normalizePath(folderPath);
         const existingBookmark = await this.getBookmark(bookmarkId);
         if (!existingBookmark.url) {
@@ -40,7 +46,7 @@ export class BookmarkManager {
         }
 
         const previousFolderPath = await this.getBookmarkPath(bookmarkId);
-        const folderId = await this.ensureFolderPath(normalizedPath);
+        const folderId = await this.ensureFolderPath(rootFolderId, normalizedPath);
         const bookmark = await chrome.bookmarks.move(bookmarkId, { parentId: folderId });
 
         return {
@@ -74,8 +80,8 @@ export class BookmarkManager {
         return path;
     }
 
-    private async ensureFolderPath(path: string[]): Promise<string> {
-        let currentId = '1'; // Bookmarks menu ID
+    private async ensureFolderPath(rootFolderId: string, path: string[]): Promise<string> {
+        let currentId = rootFolderId;
         for (const folderName of path) {
             const existingFolder = await this.findFolder(currentId, folderName);
             if (existingFolder) {
@@ -93,7 +99,17 @@ export class BookmarkManager {
 
     private async findFolder(parentId: string, name: string): Promise<chrome.bookmarks.BookmarkTreeNode | null> {
         const children = await chrome.bookmarks.getChildren(parentId);
-        return children.find(child => child.title === name && !child.url) || null;
+        const target = this.normalizeFolderTitle(name);
+        const folders = children.filter((child) => !child.url);
+
+        // Prefer exact match first.
+        const exact = folders.find((child) => child.title === name);
+        if (exact) {
+            return exact;
+        }
+
+        // Then match by normalized title (ignoring leading emoji differences).
+        return folders.find((child) => this.normalizeFolderTitle(child.title || '') === target) || null;
     }
 
     private async getBookmark(bookmarkId: string): Promise<chrome.bookmarks.BookmarkTreeNode> {
@@ -106,12 +122,32 @@ export class BookmarkManager {
 
     private normalizePath(folderPath: string[]): string[] {
         const normalizedPath = folderPath
-            .map(segment => segment.trim())
+            .map((segment) => this.sanitizeFolderSegment(segment))
             .filter(Boolean)
             .slice(0, 3);
         if (!normalizedPath.length) {
             throw new Error('A target folder path is required.');
         }
         return normalizedPath;
+    }
+
+    private sanitizeFolderSegment(value: string): string {
+        // Enforce "no emoji" in folder names, even if an upstream component returns them.
+        // Strip emoji/pictographic characters anywhere in the string, then clean up separators.
+        return value
+            .trim()
+            .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji}\u200d\uFE0F]+/gu, '')
+            .replace(/[\s\-–—_:]+/g, ' ')
+            .trim();
+    }
+
+    private normalizeFolderTitle(title: string): string {
+        // Normalize to avoid duplicate folders caused by emojis and decoration differences.
+        return title
+            .trim()
+            .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji}\u200d\uFE0F]+/gu, '')
+            .replace(/[\s\-–—_:]+/g, ' ')
+            .trim()
+            .toLowerCase();
     }
 }
